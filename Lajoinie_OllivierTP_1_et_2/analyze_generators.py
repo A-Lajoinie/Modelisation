@@ -1,209 +1,166 @@
 import csv
 import math
 
-def load_data(filepath):
-    """
-    Loads the CSV file and concatenates the binary strings into a single bit string.
-    """
+# Chargement des donnees
+def charger_donnees(chemin):
     try:
-        full_bit_string = ""
-        with open(filepath, 'r', newline='', encoding='utf-8') as csvfile:
-            reader = csv.reader(csvfile)
-            # Skip header if present. The file has 'Index,Number'
-            header = next(reader, None)
-            
-            for row in reader:
-                if len(row) >= 2:
-                    # The second column contains the 128-bit string
-                    full_bit_string += row[1].strip()
-                    
-        return full_bit_string
+        bits = ""
+        with open(chemin, 'r', newline='', encoding='utf-8') as f:
+            lecteur = csv.reader(f)
+            next(lecteur, None) # On saute l'entete
+            for ligne in lecteur:
+                if len(ligne) >= 2:
+                    bits += ligne[1].strip()
+        return bits
     except Exception as e:
-        print(f"Error loading {filepath}: {e}")
+        print(f"Erreur de lecture: {e}")
         return None
 
-def monobit_test(bit_string):
-    """
-    Test 1: Frequency (Monobit) Test
-    Checks if the number of 0s and 1s are approximately equal.
-    """
-    n = len(bit_string)
-    n0 = bit_string.count('0')
-    n1 = bit_string.count('1')
+# Test 1: Frequence (Monobit)
+def test_frequence(donnees):
+    n = len(donnees)
+    n0 = donnees.count('0')
+    n1 = donnees.count('1')
     
-    print(f"  [Monobit] Total bits: {n}")
-    print(f"  [Monobit] 0s: {n0}, 1s: {n1}")
+    print(f"  [Freq] Total: {n} bits")
+    print(f"  [Freq] 0s: {n0}, 1s: {n1}")
     
-    statistic = ((n0 - n1) ** 2) / n
-    passed = statistic < 3.8415
+    stat = ((n0 - n1) ** 2) / n
+    ok = stat < 3.8415
     
-    return {
-        "test": "Monobit (Frequence)",
-        "statistic": statistic,
-        "passed": passed,
-        "n0": n0,
-        "n1": n1
-    }
+    return "Monobit (Frequence)", stat, ok
 
-def runs_test(bit_string):
-    """
-    Test 2: Runs Test (Wald-Wolfowitz)
-    Checks if the number of runs (sequences of identical bits) is as expected.
-    """
-    n = len(bit_string)
-    n0 = bit_string.count('0')
-    n1 = bit_string.count('1')
+# Test 2: Frequence par bloc
+def test_freq_bloc(donnees, M=128):
+    n = len(donnees)
+    nb_blocs = n // M
     
-    # Count runs
+    somme = 0
+    for i in range(nb_blocs):
+        bloc = donnees[i*M : (i+1)*M]
+        prop = bloc.count('1') / M
+        somme += (prop - 0.5) ** 2
+        
+    stat = 4 * M * somme
+    z = (stat - nb_blocs) / math.sqrt(2 * nb_blocs)
+    ok = abs(z) < 1.96 
+    
+    return f"Frequence Bloc (M={M})", stat, ok
+
+# Test 3: Suites (Runs)
+def test_suites(donnees):
+    n = len(donnees)
+    n0 = donnees.count('0')
+    n1 = donnees.count('1')
+    
     runs = 1
     for i in range(1, n):
-        if bit_string[i] != bit_string[i-1]:
+        if donnees[i] != donnees[i-1]:
             runs += 1
             
-    # Expected mean and variance
-    expected_runs = 1 + (2 * n0 * n1) / n
-    variance = (2 * n0 * n1 * (2 * n0 * n1 - n)) / (n * n * (n - 1))
+    attendu = 1 + (2 * n0 * n1) / n
+    var = (2 * n0 * n1 * (2 * n0 * n1 - n)) / (n * n * (n - 1))
     
-    z_stat = (runs - expected_runs) / math.sqrt(variance)
+    z = (runs - attendu) / math.sqrt(var)
     
-    print(f"  [Runs] Total runs: {runs}")
-    print(f"  [Runs] Runs attendus: {expected_runs:.2f}")
+    print(f"  [Suites] Runs: {runs}, Attendu: {attendu:.2f}")
     
-    # Critical value for alpha=0.05 (two-tailed) is 1.96
-    passed = abs(z_stat) < 1.96
+    ok = abs(z) < 1.96
     
-    return {
-        "test": "Runs (Suites)",
-        "statistic": z_stat,
-        "passed": passed,
-        "runs": runs,
-        "expected": expected_runs
-    }
+    return "Runs (Suites)", z, ok
 
-def block_frequency_test(bit_string, M=128):
-    """
-    Test 2: Frequency Test within a Block
-    Partitions the sequence into N = n/M blocks.
-    Checks if the proportion of 1s in each block is approx 1/2.
-    """
-    n = len(bit_string)
-    N = n // M # Number of blocks
+# Test 4: Suite la plus longue
+def test_longue_suite(donnees, M=128):
+    n = len(donnees)
+    nb_blocs = n // M
     
-    sum_chi = 0
-    for i in range(N):
-        block = bit_string[i*M : (i+1)*M]
-        pi = block.count('1') / M
-        sum_chi += (pi - 0.5) ** 2
-        
-    statistic = 4 * M * sum_chi
+    # Valeurs pour M=8 (approximees ou calculees pour 8 bits)
+    # Pour M=8, les classes sont souvent: <=1, 2, 3, >=4
+    # Proba approx: 
+    # v0 (<=1): 0.2148
+    # v1 (2): 0.3672
+    # v2 (3): 0.2305
+    # v3 (>=4): 0.1875
+    # (Ces valeurs sont des exemples pour illustrer la logique M=8, a verifier si precision critique)
     
-    z_score = (statistic - N) / math.sqrt(2 * N)
-    
-    passed = abs(z_score) < 1.96 
-    
-    return {
-        "test": f"Frequence par Bloc (M={M})",
-        "statistic": statistic,
-        "z_score": z_score,
-        "passed": passed
-    }
+    if M == 8:
+        pi = [0.2148, 0.3672, 0.2305, 0.1875]
+        K = 4
+        seuil = 7.815 # Chi2 df=3 a 0.05
+    elif M == 128:
+        pi = [0.1174, 0.2430, 0.2493, 0.1752, 0.1027, 0.1124]
+        K = 6
+        seuil = 11.0705
+    else:
+        print(f"Attention: M={M} non supporte pour le calcul precis du Chi2.")
+        return f"Longue Suite (M={M})", 0.0, False
 
-def longest_run_ones_in_block_test(bit_string, M=128):
-    """
-    Test 4: Longest Run of Ones in a Block
-    """
-    n = len(bit_string)
-    N = n // M
+    comptes = [0] * K
     
-    # Classes for M=128 (K=6 bins)
-    # Expected probabilities for M=128 (from NIST)
-    pi = [0.1174, 0.2430, 0.2493, 0.1752, 0.1027, 0.1124]
-    
-    counts = [0] * 6
-    
-    for i in range(N):
-        block = bit_string[i*M : (i+1)*M]
+    for i in range(nb_blocs):
+        bloc = donnees[i*M : (i+1)*M]
         
-        # Find longest run of 1s
         max_run = 0
-        current_run = 0
-        for bit in block:
-            if bit == '1':
-                current_run += 1
-                if current_run > max_run:
-                    max_run = current_run
+        curr = 0
+        for b in bloc:
+            if b == '1':
+                curr += 1
+                if curr > max_run: max_run = curr
             else:
-                current_run = 0
+                curr = 0
         
         # Binning
-        if max_run <= 4:
-            counts[0] += 1
-        elif max_run == 5:
-            counts[1] += 1
-        elif max_run == 6:
-            counts[2] += 1
-        elif max_run == 7:
-            counts[3] += 1
-        elif max_run == 8:
-            counts[4] += 1
-        else: # >= 9
-            counts[5] += 1
+        if M == 128:
+            if max_run <= 4: comptes[0] += 1
+            elif max_run == 5: comptes[1] += 1
+            elif max_run == 6: comptes[2] += 1
+            elif max_run == 7: comptes[3] += 1
+            elif max_run == 8: comptes[4] += 1
+            else: comptes[5] += 1
+        elif M == 8:
+            if max_run <= 1: comptes[0] += 1
+            elif max_run == 2: comptes[1] += 1
+            elif max_run == 3: comptes[2] += 1
+            else: comptes[3] += 1
             
-    # Chi-square
-    chi_sq = 0
-    for i in range(6):
-        expected = N * pi[i]
-        chi_sq += ((counts[i] - expected) ** 2) / expected
+    chi2 = 0
+    for i in range(K):
+        attendu = nb_blocs * pi[i]
+        chi2 += ((comptes[i] - attendu) ** 2) / attendu
         
-    passed = chi_sq < 11.0705
-    
-    return {
-        "test": f"Suite la plus longue (M={M})",
-        "statistic": chi_sq,
-        "passed": passed,
-        "counts": counts
-    }
+    ok = chi2 < seuil
+    return f"Longue Suite (M={M})", chi2, ok
 
-def main():
-    files = [
-        r"generator1.csv",
-        r"generator2.csv"
-    ]
+def analyse():
+    fichiers = ["generator1.csv", "generator2.csv"]
     
-    for filepath in files:
-        print(f"\n{'='*40}")
-        print(f"Analyse de {filepath}...")
-        bit_string = load_data(filepath)
-        if bit_string:
-            results = []
+    for f in fichiers:
+        print(f"\n{'='*30}")
+        print(f"Fichier: {f}")
+        bits = charger_donnees(f)
+        
+        if not bits: continue
+        
+        res = []
+        res.append(test_frequence(bits))
+        res.append(test_freq_bloc(bits, 128))
+        res.append(test_suites(bits))
+        res.append(test_longue_suite(bits, 128))
+        
+        # Ajout du test M=8 demande
+        res.append(test_longue_suite(bits, 8))
+        
+        print("-" * 20)
+        tout_ok = True
+        for nom, val, reussite in res:
+            etat = "OK" if reussite else "KO"
+            if not reussite: tout_ok = False
+            print(f"{nom:<25} : {etat} (Stat: {val:.4f})")
             
-            # Test 1: Monobit
-            results.append(monobit_test(bit_string))
-            
-            # Test 2: Block Frequency (M=128)
-            results.append(block_frequency_test(bit_string, M=128))
-            
-            # Test 3: Runs (Suites de 0s et 1s)
-            results.append(runs_test(bit_string))
-            
-            # Test 4: Longest Run of Ones in a Block (M=128)
-            results.append(longest_run_ones_in_block_test(bit_string, M=128))
-            
-            print("-" * 20)
-            print("Resume:")
-            all_passed = True
-            for res in results:
-                status = "SUCCES" if res['passed'] else "ECHEC"
-                if not res['passed']:
-                    all_passed = False
-                stat_val = res['statistic']
-                print(f"{res['test']:<30} : {status} (Stat: {stat_val:.4f})")
-            
-            print("-" * 20)
-            if all_passed:
-                print("CONCLUSION: Tous les tests sont passes. C'est probablement aleatoire.")
-            else:
-                print("CONCLUSION: Certains tests ont echoue. Ce n'est pas aleatoire.")
+        if tout_ok:
+            print(">> CONCLUSION: Semble aleatoire.")
+        else:
+            print(">> CONCLUSION: Biais detecte (pas aleatoire).")
 
 if __name__ == "__main__":
-    main()
+    analyse()
